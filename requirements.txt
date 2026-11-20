@@ -1,0 +1,10 @@
+# Mousetrack - Python 3.12, Windows
+# Versions below are the ones the project was developed and tested with.
+install Anaconda
+install Spinnaker SDK
+install PySpin from the Spinnaker wheel (spinnaker_python-*-cp312-*-win_amd64.whl).
+numpy==2.5.4
+pandas==3.1.1
+opencv-python==5.0.0.93
+PyQt5==5.15.11
+pyserial==3.5
