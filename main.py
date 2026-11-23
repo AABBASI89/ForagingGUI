@@ -191,6 +191,7 @@ class MainWindow(QMainWindow):
         self.REWARD_LOCKOUT = config.REWARD_LOCKOUT_S
 
         self.VALVE_OPEN_MS = config.VALVE_OPEN_MS
+        self.CALIBRATE_PULSES = config.CALIBRATE_PULSES
         self.NUM_BACKGROUND_FRAMES = config.NUM_BACKGROUND_FRAMES
 
         # =====================================
@@ -285,6 +286,9 @@ class MainWindow(QMainWindow):
         self.btnLoadROI = QPushButton("Load ROI")
         self.btnBrowse = QPushButton("Browse")
         self.btnTestReward = QPushButton("Test Reward")
+        self.btnCalibrate = QPushButton("Calibrate Valve")
+        self.btnFlush = QPushButton("Start Flush")
+        self.btnFlush.setCheckable(True)
         self.btnStart = QPushButton("Start Experiment")
         self.btnStop = QPushButton("Stop Experiment")
 
@@ -315,6 +319,8 @@ class MainWindow(QMainWindow):
         roiLayout.addWidget(self.btnSaveROI)
         roiLayout.addWidget(self.btnLoadROI)
         roiLayout.addWidget(self.btnTestReward)
+        roiLayout.addWidget(self.btnCalibrate)
+        roiLayout.addWidget(self.btnFlush)
         roiLayout.addStretch()
 
         experimentLayout = QHBoxLayout()
@@ -350,6 +356,7 @@ class MainWindow(QMainWindow):
             "DWELL_TIME_S": self.DWELL_TIME,
             "REWARD_LOCKOUT_S": self.REWARD_LOCKOUT,
             "VALVE_OPEN_MS": self.VALVE_OPEN_MS,
+            "CALIBRATE_PULSES": self.CALIBRATE_PULSES,
             "NUM_BACKGROUND_FRAMES": self.NUM_BACKGROUND_FRAMES
         })
 
@@ -397,6 +404,8 @@ class MainWindow(QMainWindow):
         self.btnLoadROI.clicked.connect(self.load_rois)
         self.btnBrowse.clicked.connect(self.select_save_path)
         self.btnTestReward.clicked.connect(lambda: self.reward())
+        self.btnCalibrate.clicked.connect(self.calibrate_valve)
+        self.btnFlush.clicked.connect(self.toggle_flush)
 
         self.valve_event.connect(self.on_valve_event)
         self.btnStart.clicked.connect(self.start_tracking)
@@ -531,6 +540,10 @@ class MainWindow(QMainWindow):
 
                 if self.valve:
                     self.valve.open_ms = value
+
+            elif key == "CALIBRATE_PULSES":
+
+                self.CALIBRATE_PULSES = value
 
             elif key == "NUM_BACKGROUND_FRAMES":
 
@@ -1397,12 +1410,99 @@ class MainWindow(QMainWindow):
             f"Reward #{self.rewards}"
         )
 
+    def calibrate_valve(self):
+
+        if self.valve is None:
+
+            self.statusLabel.setText(
+                "Calibrate not started: Bpod not connected"
+            )
+
+            return
+
+        if not self.valve.calibrate(
+            n_pulses=self.CALIBRATE_PULSES,
+            duration_ms=self.VALVE_OPEN_MS
+        ):
+
+            self.statusLabel.setText(
+                "Valve is busy"
+            )
+
+            return
+
+        self.btnCalibrate.setEnabled(False)
+
+        self.btnTestReward.setEnabled(False)
+
+        self.btnFlush.setEnabled(False)
+
+        self.statusLabel.setText(
+            f"Calibrating valve: {self.CALIBRATE_PULSES} x "
+            f"{self.VALVE_OPEN_MS} ms"
+        )
+
+        self.log_event(
+            "ValveCalibrationStarted",
+            f"pulses={self.CALIBRATE_PULSES}, "
+            f"open_ms={self.VALVE_OPEN_MS}"
+        )
+
+    def toggle_flush(self, checked):
+
+        if checked:
+
+            if self.valve is None or not self.valve.start_flush():
+
+                self.btnFlush.setChecked(False)
+
+                self.statusLabel.setText(
+                    "Flush not started: Bpod not connected or valve busy"
+                )
+
+                return
+
+            self.btnFlush.setText("Stop Flush")
+
+            self.btnCalibrate.setEnabled(False)
+
+            self.btnTestReward.setEnabled(False)
+
+            self.statusLabel.setText("Flushing valve (open)")
+
+            self.log_event("ValveFlushStarted", "")
+
+        elif self.valve is not None:
+
+            self.valve.stop_flush()
+
     def on_valve_event(self, event, details):
 
         self.log_event(
             event,
             details
         )
+
+        if event in ("ValveCalibrated", "ValveFlushEnded", "ValveError"):
+
+            # Calibration / flush is over (or failed): restore the buttons
+            self.btnFlush.setChecked(False)
+
+            self.btnFlush.setText("Start Flush")
+
+            self.btnFlush.setEnabled(True)
+
+            self.btnCalibrate.setEnabled(True)
+
+            self.btnTestReward.setEnabled(True)
+
+            if event == "ValveCalibrated":
+
+                self.statusLabel.setText("Valve calibration done")
+
+            elif event == "ValveFlushEnded":
+
+                self.statusLabel.setText("Flush stopped (valve closed)")
 
         if event == "ValveError":
 

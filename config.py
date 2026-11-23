@@ -22,8 +22,8 @@ DEFAULT_SAVE_DIR = os.path.join(PROJECT_DIR, "Data")
 # CAMERA (FLIR / Spinnaker)
 # =====================================================
 
-EXPOSURE_US = 10000
-GAIN = 9
+EXPOSURE_US = 2000
+GAIN = 5.4
 
 CAMERA_FPS = 90
 
@@ -105,6 +105,15 @@ BPOD_VALVE = 1
 
 # How long the valve opens per reward. Timed by the Bpod itself.
 VALVE_OPEN_MS = 500
+
+# Calibrate Valve: number of openings (each VALVE_OPEN_MS long) and the
+# closed time between them
+CALIBRATE_PULSES = 50
+CALIBRATE_GAP_MS = 200
+
+# Safety limit for the manual Flush valve: the Bpod closes it after this
+# even if the program dies
+FLUSH_MAX_S = 600
 
 # =====================================================
 # RECORDING / SESSION OUTPUT

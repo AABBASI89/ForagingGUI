@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (
     QComboBox
 )
 
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal
 
 
 # key, label, kind, min, max, step, decimals, tooltip
@@ -77,12 +77,22 @@ SETTINGS = [
         "How long the Bpod valve opens per reward (timed by the Bpod)."
     ),
     (
+        "CALIBRATE_PULSES", "Calibrate pulses", "int", 1, 1000, 10, 0,
+        "Number of valve openings done by Calibrate Valve."
+    ),
+    (
         "NUM_BACKGROUND_FRAMES", "Background frames", "int", 1, 500, 10, 0,
         "Frames averaged by Capture Background."
     ),
 ]
 
 COLUMNS = 4
+
+# Empty space between setting columns
+COLUMN_GAP_PX = 30
+
+# Fixed width of each setting's spin box / combo box
+WIDGET_WIDTH_PX = 110
 
 
 class SettingsPanel(QGroupBox):
@@ -124,8 +134,17 @@ class SettingsPanel(QGroupBox):
 
             row, col = divmod(i, COLUMNS)
 
-            layout.addWidget(QLabel(label), row, col * 2)
-            layout.addWidget(widget, row, col * 2 + 1)
+            # Each group is label | widget | gap; the label is right-aligned
+            # so it sits right next to its widget
+            layout.addWidget(
+                QLabel(label),
+                row,
+                col * 3,
+                Qt.AlignRight | Qt.AlignVCenter
+            )
+            widget.setFixedWidth(WIDGET_WIDTH_PX)
+
+            layout.addWidget(widget, row, col * 3 + 1)
 
         self.btnSaveDefaults = QPushButton(
             "Save as defaults (overwrites config.py)"
@@ -135,12 +154,21 @@ class SettingsPanel(QGroupBox):
             self.save_requested.emit
         )
 
+        for col in range(COLUMNS - 1):
+
+            layout.setColumnMinimumWidth(col * 3 + 2, COLUMN_GAP_PX)
+
+        layout.setHorizontalSpacing(6)
+
+        # Spare width goes to the right of the columns, not into them
+        layout.setColumnStretch(COLUMNS * 3 - 1, 1)
+
         layout.addWidget(
             self.btnSaveDefaults,
             len(SETTINGS) // COLUMNS + 1,
             0,
             1,
-            COLUMNS * 2
+            COLUMNS * 3 - 1
         )
 
         self.setLayout(layout)

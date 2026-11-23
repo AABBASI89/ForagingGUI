@@ -153,6 +153,11 @@ class BpodValve:
 
         self.io_lock = threading.Lock()
 
+        # Set to abort the running state machine (Stop Flush)
+        self.abort_event = threading.Event()
+
+        self.flushing = False
+
         self.connect(port)
 
         self.read_hardware()
@@ -388,6 +393,17 @@ class BpodValve:
 
             while not done:
 
+                if self.abort_event.is_set():
+
+                    # Abort ends the state machine, which closes the valve
+                    self.ser.write(b"X")
+
+                    time.sleep(0.2)
+
+                    self.ser.reset_input_buffer()
+
+                    return None
+
                 if time.time() > deadline:
 
                     # Abort the trial rather than leave it running
@@ -494,6 +510,8 @@ class BpodValve:
 
         self.busy = True
 
+        self.abort_event.clear()
+
         self.thread = threading.Thread(
             target=self.worker,
             args=(duration_ms / 1000.0,),
@@ -504,7 +522,132 @@ class BpodValve:
 
         return True
 
+    # -------------------------------------------------
+    # CALIBRATION / FLUSH
+    # -------------------------------------------------
+
+    def calibrate_worker(self, n_pulses, duration_s, gap_s):
+
+        try:
+
+            for i in range(n_pulses):
+
+                if self.abort_event.is_set():
+
+                    break
+
+                self.run_pulse(duration_s)
+
+                if i < n_pulses - 1:
+
+                    time.sleep(gap_s)
+
+            print(
+                f"Valve {self.valve} calibration done: {n_pulses} x "
+                f"{duration_s * 1000:.0f} ms"
+            )
+
+            self.notify(
+                "ValveCalibrated",
+                f"valve={self.valve}, pulses={n_pulses}, "
+                f"open_ms={duration_s * 1000:.0f}"
+            )
+
+        except Exception as e:
+
+            print(f"Valve calibration failed: {e}")
+
+            self.notify("ValveError", str(e))
+
+        finally:
+
+            self.busy = False
+
+    def calibrate(
+        self,
+        n_pulses=config.CALIBRATE_PULSES,
+        duration_ms=None,
+        gap_ms=config.CALIBRATE_GAP_MS
+    ):
+        """
+        Non-blocking: open the valve n_pulses times. Returns False if
+        the valve is busy.
+        """
+
+        if self.busy:
+
+            return False
+
+        if duration_ms is None:
+
+            duration_ms = self.open_ms
+
+        self.busy = True
+
+        self.abort_event.clear()
+
+        self.thread = threading.Thread(
+            target=self.calibrate_worker,
+            args=(n_pulses, duration_ms / 1000.0, gap_ms / 1000.0),
+            daemon=True
+        )
+
+        self.thread.start()
+
+        return True
+
+    def flush_worker(self):
+
+        try:
+
+            self.run_pulse(config.FLUSH_MAX_S)
+
+            self.notify("ValveFlushEnded", f"valve={self.valve}")
+
+        except Exception as e:
+
+            print(f"Valve flush failed: {e}")
+
+            self.notify("ValveError", str(e))
+
+        finally:
+
+            self.flushing = False
+
+            self.busy = False
+
+    def start_flush(self):
+        """
+        Non-blocking: hold the valve open until stop_flush() (or
+        FLUSH_MAX_S, timed by the Bpod). Returns False if busy.
+        """
+
+        if self.busy:
+
+            return False
+
+        self.busy = True
+
+        self.flushing = True
+
+        self.abort_event.clear()
+
+        self.thread = threading.Thread(
+            target=self.flush_worker,
+            daemon=True
+        )
+
+        self.thread.start()
+
+        return True
+
+    def stop_flush(self):
+
+        self.abort_event.set()
+
     def close(self):
+
+        self.abort_event.set()
 
         try:
 
